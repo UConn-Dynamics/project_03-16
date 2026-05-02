@@ -471,6 +471,13 @@ begin
 	function eom!(dz, z, p, t)
 		q = z[1:6]
 		qdot = z[7:12]
+
+		# position correction (To reduce constraint drift)
+		Cval = C(q, p)
+		Cq_mat = Cq(q, p)
+		
+		Δq = Cq_mat \ Cval
+		q[1:6] .-= Δq
 		
 		qddot, λ, Qc = augmented_solve(q, qdot, p)
 		
@@ -483,15 +490,168 @@ end
 
 # ╔═╡ f611bb99-9bb8-484d-baf9-248defe55133
 md"""
-# Part 3 — Visualizeataion 
+# Part 3 — Visualization 
 
 Visualize the motion of the system as the two parts complete at least one oscillation
 
 """
 
+# ╔═╡ 8d153a29-eafa-41a4-a91f-25967cbbb28a
+begin
+	"""
+	We start by solving the system using the ODE solver.
+	"""
+	θ0 = pi/4
+	
+	q0 = [
+	    0.1,   					# x1 (slightly stretched spring)
+	    0.0,   					# y1 (must satisfy constraint)
+	    pi/4,   				# θ1 (must satisfy constraint)
+	    0.1 + (L/2)*cos(θ0),  	# x2 (so bar is initially at angle θ0)
+	    (L/2)*sin(θ0),   		# y2 (so bar is initially at angle θ0)
+	    θ0    					# θ2 (so bar is initially at angle θ0)
+	]
+
+	qdot0 = zeros(6)
+	
+	z0 = vcat(q0, qdot0)
+
+	tspan = (0.0, 10.0)
+
+	prob = ODEProblem(eom!, z0, tspan, params)
+	sol = solve(prob, Rodas5()) # Rodas5 for stiffness
+	Z = sol.u
+	t = sol.t
+
+	q_vals = [u[1:6] for u in sol.u]
+	q_dot_vals = [u[7:12] for u in sol.u]
+	
+	x1 = [u[1] for u in sol.u]
+	y1 = [u[2] for u in sol.u]
+	θ1 = [u[3] for u in sol.u]
+	x2 = [u[4] for u in sol.u]
+	y2 = [u[5] for u in sol.u]
+	θ2 = [u[6] for u in sol.u]
+	
+	
+
+	p1 = plot(t, x1, title="x1 (block position)", legend=false)
+	p2 = plot(t, y1, title="y1 (block position)", legend=false)
+	p3 = plot(t, θ1, title="θ1 (block angle)", legend=false)
+	p4 = plot(t, x2, title="x2 (pendulum position)", legend=false)
+	p5 = plot(t, y2, title="y2 (peldulum position)", legend=false)
+	p6 = plot(t, θ2, title="θ2 (pendulum angle)", legend=false)
+
+	plot(p1, p4, p2, p5, p3, p6, layout=(3,2), size=(750,600))
+end
+
+# ╔═╡ 0e8631c9-d22e-4d4d-b2f4-931ea728848a
+function rect!(x, y, w, h; color=:gray)
+    xs = [x, x+w, x+w, x, x]
+    ys = [y, y, y+h, y+h, y]
+    plot!(xs, ys, seriestype=:shape, color=color, linecolor=:black)
+end
+
+# ╔═╡ 21f155af-7a3c-4d12-a51b-1e9e2c342613
+function dot!(x, y; r=0.01, color=:black)
+    θ = range(0, 2π, length=30)
+    xs = x .+ r*cos.(θ)
+    ys = y .+ r*sin.(θ)
+    plot!(xs, ys, seriestype=:shape, color=color)
+end
+
+# ╔═╡ f47ae5ea-240b-4d73-99e7-a15e01ceb33b
+function slot!(x_start, x_end, y; height=0.02)
+    rect!(x_start, y - height/2, x_end - x_start, height, color=:lightgray)
+end
+
+# ╔═╡ 1b111571-7005-4d64-ac2f-7756e94c29c9
+function spring!(x1, y1, x2, y2; n=8, amp=0.02)
+    dx = x2 - x1
+    dy = y2 - y1
+    L = sqrt(dx^2 + dy^2)
+
+    # unit direction
+    ex = dx / L
+    ey = dy / L
+
+    # perpendicular direction
+    px = -ey
+    py = ex
+
+    xs = Float64[]
+    ys = Float64[]
+
+    for i in 0:n
+        t = i / n
+        x = x1 + t*dx
+        y = y1 + t*dy
+
+        offset = (i % 2 == 0 ? amp : -amp)
+
+        push!(xs, x + offset*px)
+        push!(ys, y + offset*py)
+    end
+
+    plot!(xs, ys, color=:black, linewidth=2)
+end
+
+# ╔═╡ 903bce89-6fb3-4d91-a935-a3034a2de1a7
+function draw_system(q, p)
+    x1, y1, θ1, x2, y2, θ2 = q
+    L = p.L
+
+    # geometry
+    xA = x2 - (L/2)*cos(θ2)
+    yA = y2 - (L/2)*sin(θ2)
+
+    xB = x2 + (L/2)*cos(θ2)
+    yB = y2 + (L/2)*sin(θ2)
+
+    # create fresh plot
+    plt = plot(
+        xlim=(-0.5, 0.5),
+        ylim=(-0.5, 0.5),
+        aspect_ratio=:equal,
+        legend=false,
+		title="System Animation"
+    )
+
+    # -------------------------
+    # 1. SPRING (back layer)
+    # -------------------------
+    spring!(0.0, 0.0, x1, y1)
+
+    # -------------------------
+    # 2. BLOCK
+    # -------------------------
+    rect!(x1 - 0.05, y1 - 0.025, 0.1, 0.05)
+
+    # -------------------------
+    # 3. PENDULUM
+    # -------------------------
+    plot!([xA, xB], [yA, yB], linewidth=4, color=:black)
+
+    # joint
+    dot!(xA, yA)
+
+    return plt
+end
+
+# ╔═╡ e1b87e44-5554-4c49-9c4d-e85be040ba0a
+begin
+	t_anim = range(0, 10, length=300)
+	q_anim = [sol(ti)[1:6] for ti in t_anim]
+	anim = @animate for i in 1:length(sol.t)
+	    draw_system(q_anim[i], params)
+	end
+	
+	gif(anim, "pendulum.gif", fps=30)
+end
+
 # ╔═╡ 2f4078e5-66d0-45e6-812f-1e4eb3c26897
 md"""
-# Part 4 — Graph Constarint Vectors
+# Part 4 — Graph Constraint Vectors
 
 Calculate and show (graph or vectors) the constraint forces acting on the 2-body system
 
@@ -513,7 +673,7 @@ Plots = "~1.41.6"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.4"
+julia_version = "1.12.5"
 manifest_format = "2.0"
 project_hash = "35aca4d95b32f803413e4e952193d60f9d6f7375"
 
@@ -2854,7 +3014,14 @@ version = "1.13.0+0"
 # ╠═1bfaaec6-6577-4a93-a650-8e0ad37b3f0f
 # ╟─1eaa1996-5ec5-4402-8fec-5f3d5d2a3836
 # ╠═b6c3f90b-b41b-41fc-9e41-ef141bc091cd
-# ╠═f611bb99-9bb8-484d-baf9-248defe55133
+# ╟─f611bb99-9bb8-484d-baf9-248defe55133
+# ╠═8d153a29-eafa-41a4-a91f-25967cbbb28a
+# ╟─0e8631c9-d22e-4d4d-b2f4-931ea728848a
+# ╟─21f155af-7a3c-4d12-a51b-1e9e2c342613
+# ╟─f47ae5ea-240b-4d73-99e7-a15e01ceb33b
+# ╟─1b111571-7005-4d64-ac2f-7756e94c29c9
+# ╟─903bce89-6fb3-4d91-a935-a3034a2de1a7
+# ╠═e1b87e44-5554-4c49-9c4d-e85be040ba0a
 # ╠═2f4078e5-66d0-45e6-812f-1e4eb3c26897
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
