@@ -3,5 +3,4 @@
 # Group Members:
 * [Eric Dillner](eric.dillner@uconn.edu)
 * [Jimmy Padilla](jimmy.padilla@uconn.edu)
-
-
+* [Jay Yang] (jay.yang@uconn.edu)
