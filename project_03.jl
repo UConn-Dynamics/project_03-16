@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.21
+# v0.20.23
 
 using Markdown
 using InteractiveUtils
@@ -56,6 +56,18 @@ The bar is treated as a slender rod, so its mass moment of inertia about its cen
 `` I_2 = \frac{1}{12}m_2L^2 ``
 
 The block rotation is constrained to zero, but we still give it a very small rotational inertia so the mass matrix remains well-defined.
+
+## Parameterization
+
+Instead of using one fixed set of values, the notebook uses `make_params()` in order to create different cases.
+
+Each case can change:
+
+- Bar length, ``L``
+- Block mass, ``m_1``
+- Bar mass, ``m_2``
+- Spring stiffness, ``k``
+- Gravity, ``g``
 """
 
 # ╔═╡ 39541d3d-3208-4cd0-b054-e14832d6e553
@@ -63,16 +75,25 @@ begin
 	# -------------------------
 	# Physical parameters
 	# -------------------------
-	L  = 0.4       # bar length, m
-	m1 = 0.1       # block mass, kg
-	m2 = 0.3       # bar mass, kg
-	k  = 10.0      # spring stiffness, N/m
-	g  = 9.81      # gravity, m/s^2
-	
-	I1 = 1e-6                 # small block rotational inertia
+	function make_params(;
+		L  = 0.4,       # bar length, m
+		m1 = 0.1,       # block mass, kg
+		m2 = 0.3,       # bar mass, kg
+		k  = 10.0,      # spring stiffness, N/m
+		g  = 9.81,      # gravity, m/s^2
+		I1 = 1e-6,                 # small block rotational inertia
+		t_start = 0.0,
+		t_end = 10.0,
+		x1_0 = 0.1,
+		θ2_0 = pi/4,
+		θ2dot_0 = 0.0
+	)
+					 
 	I2 = (1/12) * m2 * L^2    # slender rod inertia about COM
 	
-	params = (; L, m1, m2, k, g, I1, I2)
+		
+	return (; L, m1, m2, k, g, I1, I2, t_start, t_end, x1_0, θ2_0, θ2dot_0)
+	end
 end
 
 # ╔═╡ bd0b3937-7bbc-49c9-81ca-f067a2512c5d
@@ -486,13 +507,52 @@ begin
 		
 		return nothing
 	end
+	
+	function solve_case(p)
+	    θ0 = p.θ2_0
+
+		q0 = [
+			p.x1_0,
+			0.0,
+			0.0,
+			p.x1_0 + (p.L/2)cos(θ0),
+			(p.L/2)sin(θ0),
+			θ0
+		]
+
+		qdot0 = zeros(6)
+   	 	z0 = vcat(q0, qdot0)
+		
+    	prob = ODEProblem(eom!, z0, (p.t_start, p.t_end), p)
+
+    return solve(prob, Rodas5())
+	end
+end
+
+# ╔═╡ 148bd777-6574-4c16-9e18-252f7d661e6b
+function constraint_force_history(sol, p)
+	λ_vals = []
+
+	for i in 1:length(sol.t)
+		q = sol.u[i][1:6]
+		qdot = sol.u[i][7:12]
+
+		_, λi, _ = augmented_solve(q, qdot, p)
+		push!(λ_vals, λi)
+	end
+
+	return hcat(λ_vals...)'
 end
 
 # ╔═╡ f611bb99-9bb8-484d-baf9-248defe55133
 md"""
 # Part 3 — Visualization 
 
-Visualize the motion of the system as the two parts complete at least one oscillation
+Visualize the motion of the system as the two parts complete at least one oscillation.
+
+Each row below is one case.
+
+To add a new graph, add one more line inside 'cases' array and change parameters using `make_params`.
 
 """
 
@@ -501,48 +561,65 @@ begin
 	"""
 	We start by solving the system using the ODE solver.
 	"""
-	θ0 = pi/4
-	
-	q0 = [
-	    0.1,   					# x1 (slightly stretched spring)
-	    0.0,   					# y1 (must satisfy constraint)
-	    pi/4,   				# θ1 (must satisfy constraint)
-	    0.1 + (L/2)*cos(θ0),  	# x2 (so bar is initially at angle θ0)
-	    (L/2)*sin(θ0),   		# y2 (so bar is initially at angle θ0)
-	    θ0    					# θ2 (so bar is initially at angle θ0)
+	# Add cases here
+	cases = [
+		("Base Case", make_params()),
+		("Longer Bar", make_params(L=0.7)),
+		("Heavier Block", make_params(m1=0.5)),
+		("Stiffer Spring", make_params(k=30.0))
 	]
+	results = [(name, p, solve_case(p)) for (name, p) in cases]
+end
 
-	qdot0 = zeros(6)
-	
-	z0 = vcat(q0, qdot0)
+# ╔═╡ e12dce66-1abb-468e-aa4c-d6486633c878
+begin
 
-	tspan = (0.0, 10.0)
+	function six_plot_case(name, sol)
+		t = sol.t
 
-	prob = ODEProblem(eom!, z0, tspan, params)
-	sol = solve(prob, Rodas5()) # Rodas5 for stiffness
-	Z = sol.u
-	t = sol.t
+		x1 = [u[1] for u in sol.u]
+		y1 = [u[2] for u in sol.u]
+		θ1 = [u[3] for u in sol.u]
+		x2 = [u[4] for u in sol.u]
+		y2 = [u[5] for u in sol.u]
+		θ2 = [u[6] for u in sol.u]
 
-	q_vals = [u[1:6] for u in sol.u]
-	q_dot_vals = [u[7:12] for u in sol.u]
-	
-	x1 = [u[1] for u in sol.u]
-	y1 = [u[2] for u in sol.u]
-	θ1 = [u[3] for u in sol.u]
-	x2 = [u[4] for u in sol.u]
-	y2 = [u[5] for u in sol.u]
-	θ2 = [u[6] for u in sol.u]
-	
-	
+		p1 = plot(t, x1, title="x₁ (block position)", ylabel="x₁ (m)", legend=false)
+		p2 = plot(t, y1, title="y₁ (block position)", ylabel="y₁ (m)", legend=false)
+		p3 = plot(t, θ1, title="θ₁ (block angle)", ylabel="θ₁ (rad)", legend=false)
+		p4 = plot(t, x2, title="x₂ (pendulum position)", ylabel="x₂ (m)", legend=false)
+		p5 = plot(t, y2, title="y₂ (pendulum position)", ylabel="y₂ (m)", legend=false)
+		p6 = plot(t, θ2, title="θ₂ (pendulum angle)", ylabel="θ₂ (rad)", legend=false)
 
-	p1 = plot(t, x1, title="x1 (block position)", legend=false)
-	p2 = plot(t, y1, title="y1 (block position)", legend=false)
-	p3 = plot(t, θ1, title="θ1 (block angle)", legend=false)
-	p4 = plot(t, x2, title="x2 (pendulum position)", legend=false)
-	p5 = plot(t, y2, title="y2 (peldulum position)", legend=false)
-	p6 = plot(t, θ2, title="θ2 (pendulum angle)", legend=false)
+		return plot(
+			p1, p4,
+			p2, p5,
+			p3, p6,
+			layout=(3,2),
+			size=(900,700),
+		plot_title=name
+    	)
+	end
+end
 
-	plot(p1, p4, p2, p5, p3, p6, layout=(3,2), size=(750,600))
+# ╔═╡ 9fa4a6ce-c950-4b4b-ba88-c932ce2063e5
+begin
+	six_plot_case(results[1][1], results[1][3])
+end
+
+# ╔═╡ 55f4e5b4-da27-4044-83ca-0159265922ed
+begin
+	six_plot_case(results[2][1], results[2][3])
+end
+
+# ╔═╡ 3ce493b5-07f3-4d72-a842-cb6141e31acb
+begin
+	six_plot_case(results[3][1], results[3][3])
+end
+
+# ╔═╡ 06dad084-63b3-46c4-8591-698e3f49987d
+begin
+	six_plot_case(results[4][1], results[4][3])
 end
 
 # ╔═╡ 0e8631c9-d22e-4d4d-b2f4-931ea728848a
@@ -610,8 +687,8 @@ function draw_system(q, p)
 
     # create fresh plot
     plt = plot(
-        xlim=(-0.5, 0.5),
-        ylim=(-0.5, 0.5),
+        xlim=(-1.2, 1.2),
+        ylim=(-0.8, 0.8),
         aspect_ratio=:equal,
         legend=false,
 		title="System Animation"
@@ -620,8 +697,13 @@ function draw_system(q, p)
     # -------------------------
     # 1. SPRING (back layer)
     # -------------------------
-    spring!(0.0, 0.0, x1, y1)
+    spring!(-0.8, y1 - 0.025, x1 - 0.05, y1 - 0.025)
 
+	# -------------------------
+	# Wall for Spring Attachment
+    # -------------------------
+	plot!([-0.8, -0.8], [-0.05, 0.05], linewidth=4, color=:black)
+	
     # -------------------------
     # 2. BLOCK
     # -------------------------
@@ -638,24 +720,222 @@ function draw_system(q, p)
     return plt
 end
 
-# ╔═╡ e1b87e44-5554-4c49-9c4d-e85be040ba0a
+# ╔═╡ 4afada53-2142-4ed7-ab12-f2ec926dc4a8
 begin
-	t_anim = range(0, 10, length=300)
-	q_anim = [sol(ti)[1:6] for ti in t_anim]
-	anim = @animate for i in 1:length(sol.t)
-	    draw_system(q_anim[i], params)
-	end
+	function animate_case(case_index; fps=30, n_frames=300)
+		case_name = results[case_index][1]
+		case_params = results[case_index][2]
+		case_sol = results[case_index][3]
+		
+		t_anim = range(
+			case_params.t_start,
+			case_params.t_end,
+			length = n_frames
+		)
+		
+		q_anim = [case_sol(ti)[1:6] for ti in t_anim]
+		anim = @animate for i in 1:length(q_anim)
+	    	plt = draw_system(q_anim[i], case_params)
+			title!(plt, case_name)
+			plt
+		end
 	
-	gif(anim, "pendulum.gif", fps=30)
+	gif(anim, "pendulum_case_$(case_index).gif", fps=30)
+	end
+end
+
+# ╔═╡ ea82eeaf-67a0-4a1c-8297-2f2f6c482bc5
+begin
+	animate_case(1)
+end
+
+# ╔═╡ 8a6a659e-4e0a-4a4f-9038-9d4e5316a0a6
+begin
+	animate_case(2)
+end
+
+# ╔═╡ 589ccd6d-cd3d-44e4-8e5a-59cd55d6e0e2
+begin
+	animate_case(3)
+end
+
+# ╔═╡ 62d46df3-b8df-465d-a3ed-23965ba0f2c1
+begin
+	animate_case(4)
 end
 
 # ╔═╡ 2f4078e5-66d0-45e6-812f-1e4eb3c26897
 md"""
-# Part 4 — Graph Constraint Vectors
+# Part 4 — Visualization of Constraint Forces
 
-Calculate and show (graph or vectors) the constraint forces acting on the 2-body system
+The following plots visualize the internal constraint forces that are the result of the driven motion. λ1 represents the vertical reaction force exerted by the track to enforce the fixed y1-coordinate constraint. λ2 represents the torque of the block which is flat zero since θ2 is fixed for the block. λ3 and λ4 represents the horizontal and vertical reaction forces exerted by the pin to enforce the fixed x2 and y2 constraints of the bar relative to the block.
 
 """
+
+# ╔═╡ 5ec8ba5e-9a84-4252-9282-4b460510e189
+function plot_constraint_forces_case(case_index)
+	case_name = results[case_index][1]
+	case_params = results[case_index][2]
+	case_sol = results[case_index][3]
+
+	λ_mat = constraint_force_history(case_sol, case_params)
+
+	pλ1 = plot(case_sol.t, λ_mat[:,1],
+		title="λ₁ Track Vertical Reaction",
+		ylabel="N",
+		legend=false
+	)
+
+	pλ2 = plot(case_sol.t, λ_mat[:,2],
+		title="λ₂ Block Torque",
+		ylabel="N·m",
+		legend=false
+	)
+
+	pλ3 = plot(case_sol.t, λ_mat[:,3],
+		title="λ₃ Pin Horizontal Reaction",
+		ylabel="N",
+		legend=false
+	)
+
+	pλ4 = plot(case_sol.t, λ_mat[:,4],
+		title="λ₄ Pin Vertical Reaction",
+		ylabel="N",
+		legend=false
+	)
+
+	plot(
+		pλ1, pλ2,
+		pλ3, pλ4,
+		layout=(2,2),
+		size=(850,600),
+		plot_title=case_name
+	)
+end
+
+# ╔═╡ 1dbdc1bd-820e-4bc6-a70f-a4a8cc360e62
+begin
+	plot_constraint_forces_case(1)
+end
+
+# ╔═╡ 0f877a77-dcae-49af-9922-80c8ef9ccfed
+begin
+	plot_constraint_forces_case(2)
+end
+
+# ╔═╡ 2ef5d716-5d08-45bb-a0a2-f979dc588dce
+begin
+	plot_constraint_forces_case(3)
+end
+
+# ╔═╡ bd9ec0a4-4417-45ae-a327-06c4344f07ac
+begin
+	plot_constraint_forces_case(4)
+end
+
+# ╔═╡ 9e4f645e-bae6-4626-ab95-70d56dd5b56a
+md"""
+
+The following animation superimposes reaction force vectors that correspond to the track and pin reaction forces. The torque reaction for the block is not pictured below to improve visual clarity (and because it's quite boring). The gif is slowed down quite a bit relative to the above animation for better visual tracking of the vectors.
+
+The red vector corresponds to the horizontal pin reaction force. The green vector corresponds to the vertical pin reaction force. The blue vector corresponds to the vertical track reaction force. The magnitudes of the vectors are normalized.
+
+"""
+
+# ╔═╡ d88e7462-5386-497e-b967-f1f3a87e1b58
+function draw_system_with_forces(q, λ, p; force_scale=0.1)
+    x1, y1, θ1, x2, y2, θ2 = q
+    L = p.L
+
+    # Pin location (top of bar)
+    xA = x2 - (L/2)*cos(θ2)
+    yA = y2 - (L/2)*sin(θ2)
+
+    xB = x2 + (L/2)*cos(θ2)
+    yB = y2 + (L/2)*sin(θ2)
+
+    plt = plot(
+        xlim=(-1, 1),
+        ylim=(-1, 1),
+        aspect_ratio=:equal,
+        legend=false,
+        title="Constraint Force Animation"
+    )
+
+    # Spring, block, and pendulum from above
+    spring!(-0.8, y1 - 0.025, x1 - 0.05, y1 - 0.025)
+    plot!([-0.8, -0.8], [-0.05, 0.05], linewidth=4, color=:black)
+    rect!(x1 - 0.05, y1 - 0.025, 0.1, 0.05)
+    plot!([xA, xB], [yA, yB], linewidth=4, color=:black, label=false)
+    dot!(xA, yA)
+
+    # λ1: plot vertical reaction on block
+    quiver!([x1], [y1],
+        quiver=([0.0], [λ[1]*force_scale]),
+        color=:blue, linewidth=2, label="Track normal (λ1)")
+
+    # λ3: plot pin horizontal reaction
+    quiver!([xA], [yA],
+        quiver=([λ[3]*force_scale], [0.0]),
+        color=:red, linewidth=2, label="Pin Fx (λ3)")
+
+    # λ4: plot pin vertical reaction
+    quiver!([xA], [yA],
+        quiver=([0.0], [λ[4]*force_scale]),
+        color=:green, linewidth=2, label="Pin Fy (λ4)")
+
+	annotate!(-0.95, 0.85, text("λ₁: Track Fy", :blue, :left, 12))
+	annotate!(-0.95, 0.70, text("λ₃: Pin Fx", :red, :left, 12))
+	annotate!(-0.95, 0.55, text("λ₄: Pin Fy", :green, :left, 12))
+		
+    return plt
+end
+
+# ╔═╡ a7457bcd-f5b8-4b64-a4c8-eb33b7c73d2b
+function animate_pendulum_force(case_index; fps=5, n_frames=300, force_scale=0.05)
+	case_name = results[case_index][1]
+	case_params = results[case_index][2]
+	case_sol = results[case_index][3]
+	
+    t_anim2 = range(
+		case_params.t_start,
+		case_params.t_end,
+		length=n_frames
+	)
+
+    anim2 = @animate for ti in t_anim2
+        qi   = case_sol(ti)[1:6]
+        dqi  = case_sol(ti)[7:12]
+		
+        _, λi, _ = augmented_solve(qi, dqi, case_params)
+		
+        plt = draw_system_with_forces(qi, λi, case_params; force_scale=force_scale)
+		title!(plt, case_name)
+		plt
+    end
+	
+    gif(anim2, "pendulum_forces_case_$(case_index).gif", fps=fps)
+end
+
+# ╔═╡ 229c15a5-1f73-4954-ae9d-a2445bf3eeec
+begin
+	animate_pendulum_force(1)
+end
+
+# ╔═╡ 973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
+begin
+	animate_pendulum_force(2)
+end
+
+# ╔═╡ f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
+begin
+	animate_pendulum_force(3)
+end
+
+# ╔═╡ d006a719-80d2-487b-be39-8baefcc31662
+begin
+	animate_pendulum_force(4)
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2998,7 +3278,7 @@ version = "1.13.0+0"
 # ╔═╡ Cell order:
 # ╟─f17103ea-06bf-11f1-a2b0-79e68ed152eb
 # ╠═0d9be664-d7c5-4084-add2-25e5418742d6
-# ╟─face8a71-ba5c-45ee-88f0-5d071aeeb86c
+# ╠═face8a71-ba5c-45ee-88f0-5d071aeeb86c
 # ╠═39541d3d-3208-4cd0-b054-e14832d6e553
 # ╟─bd0b3937-7bbc-49c9-81ca-f067a2512c5d
 # ╠═4d00d63e-d34d-47e6-b478-c78062e0960d
@@ -3013,15 +3293,37 @@ version = "1.13.0+0"
 # ╟─98e20155-95d1-4478-8186-eaabb1438e31
 # ╠═1bfaaec6-6577-4a93-a650-8e0ad37b3f0f
 # ╟─1eaa1996-5ec5-4402-8fec-5f3d5d2a3836
-# ╠═b6c3f90b-b41b-41fc-9e41-ef141bc091cd
-# ╟─f611bb99-9bb8-484d-baf9-248defe55133
+# ╟─b6c3f90b-b41b-41fc-9e41-ef141bc091cd
+# ╠═148bd777-6574-4c16-9e18-252f7d661e6b
+# ╠═f611bb99-9bb8-484d-baf9-248defe55133
 # ╠═8d153a29-eafa-41a4-a91f-25967cbbb28a
-# ╟─0e8631c9-d22e-4d4d-b2f4-931ea728848a
-# ╟─21f155af-7a3c-4d12-a51b-1e9e2c342613
+# ╟─e12dce66-1abb-468e-aa4c-d6486633c878
+# ╠═9fa4a6ce-c950-4b4b-ba88-c932ce2063e5
+# ╠═55f4e5b4-da27-4044-83ca-0159265922ed
+# ╠═3ce493b5-07f3-4d72-a842-cb6141e31acb
+# ╠═06dad084-63b3-46c4-8591-698e3f49987d
+# ╠═0e8631c9-d22e-4d4d-b2f4-931ea728848a
+# ╠═21f155af-7a3c-4d12-a51b-1e9e2c342613
 # ╟─f47ae5ea-240b-4d73-99e7-a15e01ceb33b
 # ╟─1b111571-7005-4d64-ac2f-7756e94c29c9
-# ╟─903bce89-6fb3-4d91-a935-a3034a2de1a7
-# ╠═e1b87e44-5554-4c49-9c4d-e85be040ba0a
-# ╠═2f4078e5-66d0-45e6-812f-1e4eb3c26897
+# ╠═903bce89-6fb3-4d91-a935-a3034a2de1a7
+# ╠═4afada53-2142-4ed7-ab12-f2ec926dc4a8
+# ╠═ea82eeaf-67a0-4a1c-8297-2f2f6c482bc5
+# ╠═8a6a659e-4e0a-4a4f-9038-9d4e5316a0a6
+# ╠═589ccd6d-cd3d-44e4-8e5a-59cd55d6e0e2
+# ╠═62d46df3-b8df-465d-a3ed-23965ba0f2c1
+# ╟─2f4078e5-66d0-45e6-812f-1e4eb3c26897
+# ╠═5ec8ba5e-9a84-4252-9282-4b460510e189
+# ╠═1dbdc1bd-820e-4bc6-a70f-a4a8cc360e62
+# ╠═0f877a77-dcae-49af-9922-80c8ef9ccfed
+# ╠═2ef5d716-5d08-45bb-a0a2-f979dc588dce
+# ╠═bd9ec0a4-4417-45ae-a327-06c4344f07ac
+# ╠═9e4f645e-bae6-4626-ab95-70d56dd5b56a
+# ╠═d88e7462-5386-497e-b967-f1f3a87e1b58
+# ╠═a7457bcd-f5b8-4b64-a4c8-eb33b7c73d2b
+# ╠═229c15a5-1f73-4954-ae9d-a2445bf3eeec
+# ╠═973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
+# ╠═f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
+# ╠═d006a719-80d2-487b-be39-8baefcc31662
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
