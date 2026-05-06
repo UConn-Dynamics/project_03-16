@@ -622,6 +622,29 @@ begin
 	six_plot_case(results[4][1], results[4][3])
 end
 
+# ╔═╡ 148bd777-6574-4c16-9e18-252f7d661e6b
+begin
+	md"""
+	
+	# This block computes constraint forces at each time step (since lambda is not  saved in original augmented_solve function)
+	
+	"""
+
+	λ_vals = []
+	Qc_vals = []
+	
+	for i in 1:length(sol.t)
+	    q    = q_vals[i]
+	    qdot = q_dot_vals[i]
+	    _, λi, Qci = augmented_solve(q, qdot, params)
+	    push!(λ_vals, λi)
+	    push!(Qc_vals, Qci)
+	end
+	
+	# Lagrange multipliers over time
+	λ_mat = hcat(λ_vals...)'
+end;
+
 # ╔═╡ 0e8631c9-d22e-4d4d-b2f4-931ea728848a
 function rect!(x, y, w, h; color=:gray)
     xs = [x, x+w, x+w, x, x]
@@ -953,7 +976,7 @@ Plots = "~1.41.6"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.5"
+julia_version = "1.12.4"
 manifest_format = "2.0"
 project_hash = "35aca4d95b32f803413e4e952193d60f9d6f7375"
 
