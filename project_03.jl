@@ -516,7 +516,7 @@ begin
 	
 	z0 = vcat(q0, qdot0)
 
-	tspan = (0.0, 10)
+	tspan = (0.0, 10.0)
 
 	prob = ODEProblem(eom!, z0, tspan, params)
 	sol = solve(prob, Rodas5()) # Rodas5 for stiffness
