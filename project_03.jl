@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.23
+# v0.20.21
 
 using Markdown
 using InteractiveUtils
@@ -622,29 +622,6 @@ begin
 	six_plot_case(results[4][1], results[4][3])
 end
 
-# ╔═╡ 148bd777-6574-4c16-9e18-252f7d661e6b
-begin
-	md"""
-	
-	# This block computes constraint forces at each time step (since lambda is not  saved in original augmented_solve function)
-	
-	"""
-
-	λ_vals = []
-	Qc_vals = []
-	
-	for i in 1:length(sol.t)
-	    q    = q_vals[i]
-	    qdot = q_dot_vals[i]
-	    _, λi, Qci = augmented_solve(q, qdot, params)
-	    push!(λ_vals, λi)
-	    push!(Qc_vals, Qci)
-	end
-	
-	# Lagrange multipliers over time
-	λ_mat = hcat(λ_vals...)'
-end;
-
 # ╔═╡ 0e8631c9-d22e-4d4d-b2f4-931ea728848a
 function rect!(x, y, w, h; color=:gray)
     xs = [x, x+w, x+w, x, x]
@@ -768,24 +745,16 @@ begin
 end
 
 # ╔═╡ ea82eeaf-67a0-4a1c-8297-2f2f6c482bc5
-begin
-	animate_case(1)
-end
+animate_case(1)
 
 # ╔═╡ 8a6a659e-4e0a-4a4f-9038-9d4e5316a0a6
-begin
-	animate_case(2)
-end
+animate_case(2)
 
 # ╔═╡ 589ccd6d-cd3d-44e4-8e5a-59cd55d6e0e2
-begin
-	animate_case(3)
-end
+animate_case(3)
 
 # ╔═╡ 62d46df3-b8df-465d-a3ed-23965ba0f2c1
-begin
-	animate_case(4)
-end
+animate_case(4)
 
 # ╔═╡ 2f4078e5-66d0-45e6-812f-1e4eb3c26897
 md"""
@@ -837,36 +806,30 @@ function plot_constraint_forces_case(case_index)
 end
 
 # ╔═╡ 1dbdc1bd-820e-4bc6-a70f-a4a8cc360e62
-begin
-	plot_constraint_forces_case(1)
-end
+plot_constraint_forces_case(1)
 
 # ╔═╡ 0f877a77-dcae-49af-9922-80c8ef9ccfed
-begin
-	plot_constraint_forces_case(2)
-end
+plot_constraint_forces_case(2)
 
 # ╔═╡ 2ef5d716-5d08-45bb-a0a2-f979dc588dce
-begin
-	plot_constraint_forces_case(3)
-end
+plot_constraint_forces_case(3)
 
 # ╔═╡ bd9ec0a4-4417-45ae-a327-06c4344f07ac
-begin
-	plot_constraint_forces_case(4)
-end
+plot_constraint_forces_case(4)
 
 # ╔═╡ 9e4f645e-bae6-4626-ab95-70d56dd5b56a
 md"""
 
 The following animation superimposes reaction force vectors that correspond to the track and pin reaction forces. The torque reaction for the block is not pictured below to improve visual clarity (and because it's quite boring). The gif is slowed down quite a bit relative to the above animation for better visual tracking of the vectors.
 
-The red vector corresponds to the horizontal pin reaction force. The green vector corresponds to the vertical pin reaction force. The blue vector corresponds to the vertical track reaction force. The magnitudes of the vectors are normalized.
+The red vector corresponds to the horizontal pin reaction force. The green vector corresponds to the vertical pin reaction force. The blue vector corresponds to the vertical track reaction force. The magnitudes of the vectors are scaled to make them more visible.
+
+Also, the speed of the animation is halved to view the vectors easier.
 
 """
 
 # ╔═╡ d88e7462-5386-497e-b967-f1f3a87e1b58
-function draw_system_with_forces(q, λ, p; force_scale=0.1)
+function draw_system_with_forces(q, λ, p; force_scale=0.05)
     x1, y1, θ1, x2, y2, θ2 = q
     L = p.L
 
@@ -877,6 +840,30 @@ function draw_system_with_forces(q, λ, p; force_scale=0.1)
     xB = x2 + (L/2)*cos(θ2)
     yB = y2 + (L/2)*sin(θ2)
 
+	# -------------------------
+	# SPRING FORCE
+	# -------------------------
+	
+	# Wall position
+	x_wall = -0.8
+	
+	# Spring attachment point on block
+	x_attach = x1 - 0.05
+	
+	# Rest length:
+	# equilibrium occurs when x1 = 0
+	x_attach_eq = 0.0 - 0.05
+	L0 = abs(x_attach_eq - x_wall)
+	
+	# Current spring length
+	L_current = abs(x_attach - x_wall)
+	
+	# Deformation
+	ΔL = L_current - L0
+	
+	# Hooke's law magnitude
+	Fs = -p.k * ΔL
+	
     plt = plot(
         xlim=(-1, 1),
         ylim=(-1, 1),
@@ -897,68 +884,116 @@ function draw_system_with_forces(q, λ, p; force_scale=0.1)
         quiver=([0.0], [λ[1]*force_scale]),
         color=:blue, linewidth=2, label="Track normal (λ1)")
 
-    # λ3: plot pin horizontal reaction
+    # λ3 + λ4: plot pin reaction
     quiver!([xA], [yA],
-        quiver=([λ[3]*force_scale], [0.0]),
-        color=:red, linewidth=2, label="Pin Fx (λ3)")
+    quiver=([λ[3]*force_scale], [λ[4]*force_scale]),
+    color=:purple,
+    linewidth=2,
+    label="Pin Force"
+	)
 
-    # λ4: plot pin vertical reaction
-    quiver!([xA], [yA],
-        quiver=([0.0], [λ[4]*force_scale]),
-        color=:green, linewidth=2, label="Pin Fy (λ4)")
+	# -------------------------
+    # SPRING FORCE VECTOR
+    # -------------------------
+    quiver!(
+        [x1], [y1],
+        quiver=([Fs*0.2], [0.0]),
+        color=:red,
+        linewidth=2
+    )
 
 	annotate!(-0.95, 0.85, text("λ₁: Track Fy", :blue, :left, 12))
-	annotate!(-0.95, 0.70, text("λ₃: Pin Fx", :red, :left, 12))
-	annotate!(-0.95, 0.55, text("λ₄: Pin Fy", :green, :left, 12))
+	annotate!(-0.95, 0.70, text("λ₃+λ₄: Pin Fx", :purple, :left, 12))
+	annotate!(-0.95, 0.55, text("Spring: Fs", :red, :left, 12))
 		
     return plt
 end
 
 # ╔═╡ a7457bcd-f5b8-4b64-a4c8-eb33b7c73d2b
-function animate_pendulum_force(case_index; fps=5, n_frames=300, force_scale=0.05)
-	case_name = results[case_index][1]
-	case_params = results[case_index][2]
-	case_sol = results[case_index][3]
-	
-    t_anim2 = range(
-		case_params.t_start,
-		case_params.t_end,
-		length=n_frames
-	)
+function animate_pendulum_force(case_index;
+    fps=15,
+    n_frames=300,
+    force_scale=0.05,
+    hold_frames=12
+)
 
-    anim2 = @animate for ti in t_anim2
-        qi   = case_sol(ti)[1:6]
-        dqi  = case_sol(ti)[7:12]
-		
+    case_name   = results[case_index][1]
+    case_params = results[case_index][2]
+    case_sol    = results[case_index][3]
+
+    t_anim = range(
+        case_params.t_start,
+        case_params.t_end,
+        length=n_frames
+    )
+
+    # -------------------------
+    # PRECOMPUTE STATES
+    # -------------------------
+    q_anim = Vector{Vector{Float64}}(undef, n_frames)
+    λ_anim = Vector{Vector{Float64}}(undef, n_frames)
+
+    for (i, ti) in enumerate(t_anim)
+
+        zi = case_sol(ti)
+
+        qi  = zi[1:6]
+        dqi = zi[7:12]
+
         _, λi, _ = augmented_solve(qi, dqi, case_params)
-		
-        plt = draw_system_with_forces(qi, λi, case_params; force_scale=force_scale)
-		title!(plt, case_name)
-		plt
+
+        q_anim[i] = qi
+        λ_anim[i] = λi
     end
-	
-    gif(anim2, "pendulum_forces_case_$(case_index).gif", fps=fps)
+
+    # -------------------------
+    # HOLD FIRST FRAME
+    # -------------------------
+    q_frames = vcat(
+        fill(q_anim[1], hold_frames),
+        q_anim
+    )
+
+    λ_frames = vcat(
+        fill(λ_anim[1], hold_frames),
+        λ_anim
+    )
+
+    # -------------------------
+    # ANIMATION
+    # -------------------------
+    anim = @animate for i in eachindex(q_frames)
+
+        plt = draw_system_with_forces(
+            q_frames[i],
+            λ_frames[i],
+            case_params;
+            force_scale=force_scale
+        )
+
+        title!(plt, case_name)
+
+        plt
+    end
+
+    gif(
+        anim,
+        "pendulum_forces_case_$(case_index).gif",
+        fps=fps
+    )
 end
 
 # ╔═╡ 229c15a5-1f73-4954-ae9d-a2445bf3eeec
-begin
-	animate_pendulum_force(1)
-end
+animate_pendulum_force(1)
 
 # ╔═╡ 973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
-begin
-	animate_pendulum_force(2)
-end
+animate_pendulum_force(2)
 
 # ╔═╡ f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
-begin
-	animate_pendulum_force(3)
-end
+animate_pendulum_force(3)
 
 # ╔═╡ d006a719-80d2-487b-be39-8baefcc31662
-begin
-	animate_pendulum_force(4)
-end
+animate_pendulum_force(4)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -976,7 +1011,7 @@ Plots = "~1.41.6"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.4"
+julia_version = "1.12.5"
 manifest_format = "2.0"
 project_hash = "35aca4d95b32f803413e4e952193d60f9d6f7375"
 
@@ -3321,32 +3356,32 @@ version = "1.13.0+0"
 # ╠═f611bb99-9bb8-484d-baf9-248defe55133
 # ╠═8d153a29-eafa-41a4-a91f-25967cbbb28a
 # ╟─e12dce66-1abb-468e-aa4c-d6486633c878
-# ╠═9fa4a6ce-c950-4b4b-ba88-c932ce2063e5
-# ╠═55f4e5b4-da27-4044-83ca-0159265922ed
-# ╠═3ce493b5-07f3-4d72-a842-cb6141e31acb
-# ╠═06dad084-63b3-46c4-8591-698e3f49987d
-# ╠═0e8631c9-d22e-4d4d-b2f4-931ea728848a
-# ╠═21f155af-7a3c-4d12-a51b-1e9e2c342613
+# ╟─9fa4a6ce-c950-4b4b-ba88-c932ce2063e5
+# ╟─55f4e5b4-da27-4044-83ca-0159265922ed
+# ╟─3ce493b5-07f3-4d72-a842-cb6141e31acb
+# ╟─06dad084-63b3-46c4-8591-698e3f49987d
+# ╟─0e8631c9-d22e-4d4d-b2f4-931ea728848a
+# ╟─21f155af-7a3c-4d12-a51b-1e9e2c342613
 # ╟─f47ae5ea-240b-4d73-99e7-a15e01ceb33b
 # ╟─1b111571-7005-4d64-ac2f-7756e94c29c9
-# ╠═903bce89-6fb3-4d91-a935-a3034a2de1a7
+# ╟─903bce89-6fb3-4d91-a935-a3034a2de1a7
 # ╠═4afada53-2142-4ed7-ab12-f2ec926dc4a8
 # ╠═ea82eeaf-67a0-4a1c-8297-2f2f6c482bc5
 # ╠═8a6a659e-4e0a-4a4f-9038-9d4e5316a0a6
 # ╠═589ccd6d-cd3d-44e4-8e5a-59cd55d6e0e2
 # ╠═62d46df3-b8df-465d-a3ed-23965ba0f2c1
 # ╟─2f4078e5-66d0-45e6-812f-1e4eb3c26897
-# ╠═5ec8ba5e-9a84-4252-9282-4b460510e189
+# ╟─5ec8ba5e-9a84-4252-9282-4b460510e189
 # ╠═1dbdc1bd-820e-4bc6-a70f-a4a8cc360e62
 # ╠═0f877a77-dcae-49af-9922-80c8ef9ccfed
 # ╠═2ef5d716-5d08-45bb-a0a2-f979dc588dce
-# ╠═bd9ec0a4-4417-45ae-a327-06c4344f07ac
-# ╠═9e4f645e-bae6-4626-ab95-70d56dd5b56a
-# ╠═d88e7462-5386-497e-b967-f1f3a87e1b58
-# ╠═a7457bcd-f5b8-4b64-a4c8-eb33b7c73d2b
-# ╠═229c15a5-1f73-4954-ae9d-a2445bf3eeec
-# ╠═973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
-# ╠═f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
-# ╠═d006a719-80d2-487b-be39-8baefcc31662
+# ╟─bd9ec0a4-4417-45ae-a327-06c4344f07ac
+# ╟─9e4f645e-bae6-4626-ab95-70d56dd5b56a
+# ╟─d88e7462-5386-497e-b967-f1f3a87e1b58
+# ╟─a7457bcd-f5b8-4b64-a4c8-eb33b7c73d2b
+# ╟─229c15a5-1f73-4954-ae9d-a2445bf3eeec
+# ╟─973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
+# ╟─f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
+# ╟─d006a719-80d2-487b-be39-8baefcc31662
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
