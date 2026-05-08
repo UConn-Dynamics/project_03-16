@@ -5,3 +5,5 @@
 * [Jimmy Padilla](jimmy.padilla@uconn.edu)
 * [Jay Yang](jay.yang@uconn.edu)
 * [Ameet Gambhirwala](ypj24004@uconn.edu)
+* [Brice Lew](brice.liew@uconn.edu)
+* [Colby Von Kannewurff](colby.von_kannewurff@uconn.edu)
