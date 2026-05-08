@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.21
+# v0.20.24
 
 using Markdown
 using InteractiveUtils
@@ -995,6 +995,110 @@ animate_pendulum_force(3)
 # ╔═╡ d006a719-80d2-487b-be39-8baefcc31662
 animate_pendulum_force(4)
 
+# ╔═╡ 1274b65c-6636-43ed-9fa2-fe2819c02151
+function compute_energies(sol, p)
+    t = sol.t
+    
+    KE_block = zeros(length(t))
+    KE_bar   = zeros(length(t))
+    PE_grav_block = zeros(length(t))
+    PE_grav_bar   = zeros(length(t))
+    PE_spring     = zeros(length(t))
+    
+    for i in 1:length(t)
+        z = sol.u[i]
+        q    = z[1:6]
+        qdot = z[7:12]
+        
+        x1, y1, θ1, x2, y2, θ2 = q
+        x1dot, y1dot, θ1dot, x2dot, y2dot, θ2dot = qdot
+        
+        # Block kinetic energy (translation only, rotation locked)
+        KE_block[i] = 0.5 * p.m1 * (x1dot^2 + y1dot^2)
+        
+        # Bar kinetic energy (translation + rotation)
+        KE_bar[i] = 0.5 * p.m2 * (x2dot^2 + y2dot^2) +
+                    0.5 * p.I2 * θ2dot^2
+        
+        # Gravitational PE (take y=0 as reference)
+       PE_ref = -p.m2 * p.g * (p.L / 2)   # energy when bar hangs vertically
+		PE_grav_bar[i] = p.m2 * p.g * y2 - PE_ref
+		
+        PE_spring[i] = 0.5 * p.k * x1^2
+    end
+    
+    KE_total = KE_block .+ KE_bar
+    PE_total = PE_grav_block .+ PE_grav_bar .+ PE_spring
+    E_total  = KE_total .+ PE_total
+    
+    return (; t, KE_block, KE_bar, KE_total,
+              PE_grav_block, PE_grav_bar, PE_spring,
+              PE_total, E_total)
+end
+
+# ╔═╡ c5d7be1c-0a57-48f0-84a6-216146bd65bc
+function plot_energies(case_index)
+    case_name   = results[case_index][1]
+    case_params = results[case_index][2]
+    case_sol    = results[case_index][3]
+    
+    e = compute_energies(case_sol, case_params)
+    
+    # --- Block ---
+    p_block_ke = plot(e.t, e.KE_block,
+        title  = "Block — Kinetic Energy",
+        ylabel = "Energy (J)",
+        label  = "KE block",
+        color  = :blue)
+    
+    p_block_pe = plot(e.t, e.PE_grav_block,
+        title  = "Block — Gravitational PE",
+        ylabel = "Energy (J)",
+        label  = "PE grav block",
+        color  = :blue,
+        linestyle = :dash)
+    
+    plot!(p_block_pe, e.t, e.PE_spring,
+        label     = "PE spring",
+        color     = :red,
+        linestyle = :dot)
+    
+    # --- Bar ---
+    p_bar_ke = plot(e.t, e.KE_bar,
+        title  = "Bar — Kinetic Energy",
+        ylabel = "Energy (J)",
+        label  = "KE bar",
+        color  = :green)
+    
+    p_bar_pe = plot(e.t, e.PE_grav_bar,
+        title  = "Bar — Gravitational PE",
+        ylabel = "Energy (J)",
+        label  = "PE grav bar",
+        color  = :green,
+        linestyle = :dash)
+    
+
+    plot(
+        p_block_ke, p_bar_ke,
+        p_block_pe, p_bar_pe,
+        layout     = (2, 2),
+        size       = (900, 800),
+        plot_title = case_name
+    )
+end
+
+# ╔═╡ 3a42e27a-192e-4a77-b3d2-d2951f1c2cf3
+plot_energies(1)
+
+# ╔═╡ 9a1eb051-5e8f-4dda-aef7-295576c96fe3
+plot_energies(2)
+
+# ╔═╡ 4df28e4f-933f-41f2-9f0c-aebfb618b783
+plot_energies(4)
+
+# ╔═╡ 7dc69785-d7d0-48cc-a39d-f71aab53b724
+
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -1011,7 +1115,7 @@ Plots = "~1.41.6"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.5"
+julia_version = "1.12.6"
 manifest_format = "2.0"
 project_hash = "35aca4d95b32f803413e4e952193d60f9d6f7375"
 
@@ -3383,5 +3487,11 @@ version = "1.13.0+0"
 # ╟─973856a9-4b1e-41cc-8b3b-c1e18d5e79b0
 # ╟─f7c67abf-afcc-4e05-b222-fb3b1ab9e8a7
 # ╟─d006a719-80d2-487b-be39-8baefcc31662
+# ╠═1274b65c-6636-43ed-9fa2-fe2819c02151
+# ╠═c5d7be1c-0a57-48f0-84a6-216146bd65bc
+# ╠═3a42e27a-192e-4a77-b3d2-d2951f1c2cf3
+# ╠═9a1eb051-5e8f-4dda-aef7-295576c96fe3
+# ╠═4df28e4f-933f-41f2-9f0c-aebfb618b783
+# ╠═7dc69785-d7d0-48cc-a39d-f71aab53b724
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
